@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers;
 use App\Mail\MailNotify;
 use Illuminate\Support\Facades\Auth;
@@ -11,15 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use App\User;
 use Mail;
-use Session;
-
 class UserController extends Controller
 {
-    public function test()
-    {
-        dd(Session::get('credentials'));
-    }
-
     public function register(Request $request)
     {
         $params = $request->only('email', 'name', 'password');
@@ -34,12 +26,14 @@ class UserController extends Controller
         return response()->json($user, Response::HTTP_OK);
     }
 
-
     public function login(Request $request)
     {
-        $credentials = $request->only('email', 'password');
-        Session::put('credentials',$credentials);
 
+
+        $credentials = $request->only('email', 'password');
+        Redis::connection();
+        Redis::set('email',$request->email);
+        Redis::set('password',$request->password);
         try {
             if (! $token = JWTAuth::attempt($credentials)) {
                 return response()->json(['error' => 'invalid_credentials'], 401);
@@ -50,7 +44,6 @@ class UserController extends Controller
         $refresh_token = bcrypt(rand(0,9));
         DB::table('users')->where('email',$request->email)->update(array(
             'refresh_token'=>$refresh_token));
-
         return response()->json([
             'message' => 'Login successful',
             'access_token' => $token,
@@ -89,13 +82,10 @@ class UserController extends Controller
 
     public function refresh(Request $request)
     {
-
-
-            $credentials = Session::get('credentials');
-//            $credentials = $request->only('email', 'password');
+            Redis::connection();
+            $credentials = ['email' =>Redis::get('email'), 'password' => Redis::get('password') ];
             $refresh_token = $request->refresh_token;
             $refresh_tokenDB  = DB::table('users')->where('refresh_token',$refresh_token)->first();
-
             if (!empty($refresh_tokenDB)) {
                 $token = JWTAuth::attempt($credentials);
                 return response()->json(['token' => $token, 'refresh_token' => $refresh_token], Response::HTTP_OK);
